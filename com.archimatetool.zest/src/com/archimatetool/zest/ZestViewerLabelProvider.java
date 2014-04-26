@@ -8,6 +8,8 @@ package com.archimatetool.zest;
 import org.eclipse.draw2d.ColorConstants;
 import org.eclipse.draw2d.IFigure;
 import org.eclipse.draw2d.PolylineConnection;
+import org.eclipse.draw2d.PositionConstants;
+import org.eclipse.draw2d.text.BlockFlow;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.jface.viewers.BaseLabelProvider;
 import org.eclipse.jface.viewers.ILabelProvider;
@@ -15,12 +17,16 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.zest.core.viewers.IFigureProvider;
 import org.eclipse.zest.core.viewers.ISelfStyleProvider;
 import org.eclipse.zest.core.widgets.GraphConnection;
 import org.eclipse.zest.core.widgets.GraphNode;
 import org.eclipse.zest.core.widgets.ZestStyles;
 
+import com.archimatetool.editor.diagram.ArchimateDiagramModelFactory;
+import com.archimatetool.editor.diagram.figures.IDiagramModelObjectFigure;
 import com.archimatetool.editor.diagram.figures.ToolTipFigure;
+import com.archimatetool.editor.diagram.figures.application.*;
 import com.archimatetool.editor.diagram.figures.connections.AccessConnectionFigure;
 import com.archimatetool.editor.diagram.figures.connections.AggregationConnectionFigure;
 import com.archimatetool.editor.diagram.figures.connections.AssignmentConnectionFigure;
@@ -32,12 +38,14 @@ import com.archimatetool.editor.diagram.figures.connections.SpecialisationConnec
 import com.archimatetool.editor.diagram.figures.connections.TriggeringConnectionFigure;
 import com.archimatetool.editor.diagram.figures.connections.UsedByConnectionFigure;
 import com.archimatetool.editor.ui.ArchimateLabelProvider;
+import com.archimatetool.editor.ui.FontFactory;
 import com.archimatetool.model.IAccessRelationship;
 import com.archimatetool.model.IAggregationRelationship;
 import com.archimatetool.model.IArchimateElement;
 import com.archimatetool.model.IAssignmentRelationship;
 import com.archimatetool.model.ICompositionRelationship;
 import com.archimatetool.model.IFlowRelationship;
+import com.archimatetool.model.IFontAttribute;
 import com.archimatetool.model.IInfluenceRelationship;
 import com.archimatetool.model.INameable;
 import com.archimatetool.model.IRealisationRelationship;
@@ -45,6 +53,10 @@ import com.archimatetool.model.IRelationship;
 import com.archimatetool.model.ISpecialisationRelationship;
 import com.archimatetool.model.ITriggeringRelationship;
 import com.archimatetool.model.IUsedByRelationship;
+import com.archimatetool.model.impl.*;
+import com.archimatetool.model.IDiagramModelArchimateObject;
+import com.archimatetool.editor.diagram.figures.AbstractArchimateFigure;
+
 
 
 /**
@@ -53,7 +65,8 @@ import com.archimatetool.model.IUsedByRelationship;
  * @author Phillip Beauvoir
  */
 public class ZestViewerLabelProvider extends BaseLabelProvider
-implements ILabelProvider, ISelfStyleProvider {
+implements ILabelProvider, ISelfStyleProvider, IFigureProvider {
+// implements ILabelProvider, ISelfStyleProvider {
     
     Color HIGHLIGHT_COLOR = new Color(Display.getDefault(), 255, 255, 255);
     Color FOCUS_COLOR = new Color(Display.getDefault(), 200, 200, 255);
@@ -228,4 +241,34 @@ implements ILabelProvider, ISelfStyleProvider {
         node.setHighlightColor(getNodeHighlightColor(element));
         node.setTooltip(getTooltip(element));
     }
+
+	@Override
+	public IFigure getFigure(Object element) {
+		IFigure result = null;
+
+	    if (element instanceof ApplicationCollaboration)
+	        result = new ApplicationCollaborationFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    else if  (element instanceof ApplicationComponent)
+	        result = new ApplicationComponentFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    else if (element instanceof ApplicationFunction)
+	        result = new ApplicationFunctionFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    else if (element instanceof ApplicationInteraction)
+	        result = new ApplicationInteractionFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    else if (element instanceof ApplicationInterface)
+	        result = new ApplicationInterfaceFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    else if (element instanceof ApplicationService)
+	        result = new ApplicationServiceFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    else if (element instanceof DataObject)
+	        result = new ApplicationDataObjectFigure(ArchimateDiagramModelFactory.createDiagramModelArchimateObject((IArchimateElement) element));
+	    
+	    if (result != null) {
+	        ((AbstractArchimateFigure) result).getFigureDelegate().setEnabled(true);
+	        ((AbstractArchimateFigure) result).getTextControl().setText(getText(element));
+	        ((AbstractArchimateFigure) result).getTextControl().setFont(FontFactory.getDefaultUserViewFont());
+	        ((BlockFlow) ((AbstractArchimateFigure) result).getTextControl().getParent()).setHorizontalAligment(PositionConstants.CENTER);
+	        result.setSize( -1, -1 );
+	    }
+	 
+	    return result;
+	}
 }
