@@ -1,0 +1,16 @@
+ul
+{
+    list-style-type: none;
+}
+
+li
+{
+    list-style-type: none;
+}
+
+.panel-body {
+      	width: 100%;
+      	height: 100%;
+      	overflow: auto;
+      
+      }

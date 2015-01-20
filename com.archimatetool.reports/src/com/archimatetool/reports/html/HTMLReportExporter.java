@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.net.URL;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +19,8 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.regex.Matcher;
 
+import org.eclipse.core.runtime.FileLocator;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.jface.dialogs.MessageDialog;
@@ -42,14 +45,21 @@ import com.archimatetool.editor.utils.HTMLUtils;
 import com.archimatetool.editor.utils.StringUtils;
 import com.archimatetool.model.FolderType;
 import com.archimatetool.model.IArchimateComponent;
+import com.archimatetool.model.IArchimateElement;
 import com.archimatetool.model.IArchimateModel;
 import com.archimatetool.model.IArchimatePackage;
 import com.archimatetool.model.IDiagramModel;
+import com.archimatetool.model.IDiagramModelArchimateObject;
+import com.archimatetool.model.IDiagramModelContainer;
+import com.archimatetool.model.IDiagramModelObject;
 import com.archimatetool.model.IFolder;
 import com.archimatetool.model.INameable;
 import com.archimatetool.model.IProperties;
 import com.archimatetool.model.IProperty;
+import com.archimatetool.model.impl.ArchimateComponent;
 
+import org.stringtemplate.v4.*;
+import org.eclipse.ui.plugin.AbstractUIPlugin;
 
 
 /**
@@ -57,13 +67,20 @@ import com.archimatetool.model.IProperty;
  * 
  * @author Phillip Beauvoir
  */
-public class HTMLReportExporter {
+public class HTMLReportExporter extends AbstractUIPlugin {
     
     private IArchimateModel fModel;
-    
     private File fMainFolder;
+    private File fFramesFolder;
+    private File fElementsFolder;
+    private File fViewsFolder;
+    private File fImagesFolder;
+    //
+    OutputStreamWriter writer;
     
-    private OutputStreamWriter writer;
+    // Templates
+    STRawGroupDir groupe;
+    ST element, view, modeltree, model;
     
     public void export(IArchimateModel model) throws IOException {
         fMainFolder = askSaveFolder();
@@ -87,120 +104,143 @@ public class HTMLReportExporter {
     }
     
     private File createMainHTMLPage() throws IOException {
-        File file = new File(fMainFolder, "report.html"); //$NON-NLS-1$
-        writer = new OutputStreamWriter(new FileOutputStream(file), "UTF16"); //$NON-NLS-1$
+    	// Instantiate templates files
+    	groupe = new STRawGroupDir(getTemplatesFolder().getAbsolutePath()+File.separator+"st", '^', '^');
+        element = groupe.getInstanceOf("element");
+        view = groupe.getInstanceOf("view");
+        modeltree = groupe.getInstanceOf("modeltree");
+        model = groupe.getInstanceOf("model");
         
-        writeHeader();
+        // Copy HTML skeleton to target
+        File srcDir = new File(getTemplatesFolder(), "html");
+        FileUtils.copyFolder(srcDir, fMainFolder);
         
-        writeBusinessElements();
-        writeApplicationElements();
-        writeTechnologyElements();
-        writeMotivationElements();
-        writeImplementationMigrationElements();
-        writeConnectorElements();
+        // Set folders
+        fFramesFolder = new File(fMainFolder, "frames");
+        fElementsFolder = new File(fMainFolder, "elements");
+        fViewsFolder = new File(fMainFolder, "views");
+        fImagesFolder = new File(fMainFolder, "images");
+        
+        // Create model.html
+        writeElement(fModel, model, new File(fElementsFolder, "model.html")); //$NON-NLS-1$
+        
+        // Lists of elements
+        List<EObject> businessList = new ArrayList<EObject>();
+        List<EObject> applicationList = new ArrayList<EObject>();
+        List<EObject> technologyList = new ArrayList<EObject>();
+        List<EObject> motivationList = new ArrayList<EObject>();
+        List<EObject> implementationMigrationList = new ArrayList<EObject>();
+        List<EObject> connectorList = new ArrayList<EObject>();
+        List<IDiagramModel> viewList = fModel.getDiagramModels();
+        
+        // Get elements
+        getBusinessElements(businessList);
+        sort(businessList);
+        getApplicationElements(applicationList);
+        sort(applicationList);
+        getTechnologyElements(technologyList);
+        sort(technologyList);
+        getMotivationElements(motivationList);
+        sort(motivationList);
+        getImplementationMigrationElements(implementationMigrationList);
+        sort(implementationMigrationList);
+        getConnectorElements(connectorList);
+        sort(connectorList);
+        sort(viewList);
+        //writeDiagrams();
+        
+        // write (elements).html
+        writeElements(businessList);
+        writeElements(applicationList);
+        writeElements(technologyList);
+        //writeElements(motivationList);
+        //writeElements(implementationMigrationList);
+        //writeElements(connectorList);
         writeDiagrams();
         
-        writeCloser();
-        
-        writer.close();
-        
-        return file;
+        // Write modeltree.html
+        File modeltreeF = new File(fFramesFolder, "modeltree.html"); //$NON-NLS-1$
+        OutputStreamWriter modeltreeW = new OutputStreamWriter(new FileOutputStream(modeltreeF), "UTF16"); //$NON-NLS-1$
+        modeltree.add("businessList", businessList);
+        modeltree.add("applicationList", applicationList);
+        modeltree.add("technologyList", technologyList);
+        modeltree.add("motivationList", motivationList);
+        modeltree.add("implementationMigrationList", implementationMigrationList);
+        modeltree.add("connectorList", connectorList);
+        modeltree.add("viewList", viewList);
+        modeltreeW.write(modeltree.render()); //$NON-NLS-1$
+        modeltreeW.close();
+       
+        return new File(fMainFolder, "index.html");
     }
     
-    private void writeHeader() throws IOException {
-        String s = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n"; //$NON-NLS-1$
-        s += "<html>\n";  //$NON-NLS-1$
-        s += "<head>\n"; //$NON-NLS-1$
-        s += "<title>" + Messages.HTMLReportExporter_0 + "</title>\n"; //$NON-NLS-1$ //$NON-NLS-2$
-        
-        s += "<style type=\"text/css\">\n"; //$NON-NLS-1$
-        s += "table { border-collapse:collapse; }\n"; //$NON-NLS-1$
-        s += "table, td, th { border:1px solid black; }\n"; //$NON-NLS-1$
-        s += "</style>\n"; //$NON-NLS-1$
-        
-        s += "</head>\n"; //$NON-NLS-1$
-        s += "<body style=\"font-family:Verdana; font-size:10pt;\">\n"; //$NON-NLS-1$
-        s += "<h1>" + Messages.HTMLReportExporter_1 + "</h1>\n"; //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write(s);
-        
-        writer.write("<br/>\n"); //$NON-NLS-1$
-        writeModelSummary(fModel);
-        writer.write("<br/>\n"); //$NON-NLS-1$
+    public File getTemplatesFolder() {
+        URL url = FileLocator.find(getBundle(), new Path("/templates"), null); //$NON-NLS-1$
+        try {
+            url = FileLocator.resolve(url);
+        }
+        catch(IOException ex) {
+            ex.printStackTrace();
+        }
+        return new File(url.getPath()); 
     }
-    
-    private void writeCloser() throws IOException {
-        String s = "</body>\n"; //$NON-NLS-1$
-        s += "</html>"; //$NON-NLS-1$
-        writer.write(s);
-    }
-    
-    private void writeBusinessElements() throws IOException {
+        
+    private void getBusinessElements(List<EObject> list) throws IOException {
         IFolder businessFolder = fModel.getFolder(FolderType.BUSINESS);
-        String color = ColorFactory.convertColorToString(ColorFactory.COLOR_BUSINESS);
+        //String color = ColorFactory.convertColorToString(ColorFactory.COLOR_BUSINESS);
+        //List<EObject> list = new ArrayList<EObject>();
         
         // Business Actors
-        List<EObject> list = new ArrayList<EObject>();
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessActor());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessRole());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessInterface());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessCollaboration());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getLocation());
-        writeElements(list, Messages.HTMLReportExporter_2, color);
-        
         // Business Functions
-        list.clear();
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessFunction());
-        writeElements(list, Messages.HTMLReportExporter_3, color);
-        
         // Business Information
-        list.clear();
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessObject());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getRepresentation());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getMeaning());
-        writeElements(list, Messages.HTMLReportExporter_4, color);
-        
         // Business Processes
-        list.clear();
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessEvent());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessInteraction());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessProcess());
-        writeElements(list, Messages.HTMLReportExporter_5, color);
-        
         // Business Products
-        list.clear();
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getContract());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getProduct());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getBusinessService());
         getElements(businessFolder, list, IArchimatePackage.eINSTANCE.getValue());
-        writeElements(list, Messages.HTMLReportExporter_6, color);
+        
+        //writeElements(list, Messages.HTMLReportExporter_6, color);
     }
     
-    private void writeApplicationElements() throws IOException {
+    private void getApplicationElements(List<EObject> list) throws IOException {
         IFolder applicationFolder = fModel.getFolder(FolderType.APPLICATION);
-        String color = ColorFactory.convertColorToString(ColorFactory.COLOR_APPLICATION);
+        //String color = ColorFactory.convertColorToString(ColorFactory.COLOR_APPLICATION);
         
         // Applications
-        List<EObject> list = new ArrayList<EObject>();
+        //List<EObject> list = new ArrayList<EObject>();
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getApplicationCollaboration());
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getApplicationComponent());
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getApplicationFunction());
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getApplicationInteraction());
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getApplicationInterface());
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getApplicationService());
-        writeElements(list, Messages.HTMLReportExporter_7, color);
+        //writeElements(list, Messages.HTMLReportExporter_7, color);
         
         // Application Data
-        list.clear();
+        //list.clear();
         getElements(applicationFolder, list, IArchimatePackage.eINSTANCE.getDataObject());
-        writeElements(list, Messages.HTMLReportExporter_8, color);
+        //writeElements(list, Messages.HTMLReportExporter_8, color);
     }
     
-    private void writeTechnologyElements() throws IOException {
+    private void getTechnologyElements(List<EObject> list) throws IOException {
         IFolder technologyFolder = fModel.getFolder(FolderType.TECHNOLOGY);
-        String color = ColorFactory.convertColorToString(ColorFactory.COLOR_TECHNOLOGY);
+        //String color = ColorFactory.convertColorToString(ColorFactory.COLOR_TECHNOLOGY);
         
         // Infrastructures
-        List<EObject> list = new ArrayList<EObject>();
+        //List<EObject> list = new ArrayList<EObject>();
         getElements(technologyFolder, list, IArchimatePackage.eINSTANCE.getArtifact());
         getElements(technologyFolder, list, IArchimatePackage.eINSTANCE.getCommunicationPath());
         getElements(technologyFolder, list, IArchimatePackage.eINSTANCE.getDevice());
@@ -210,14 +250,14 @@ public class HTMLReportExporter {
         getElements(technologyFolder, list, IArchimatePackage.eINSTANCE.getNetwork());
         getElements(technologyFolder, list, IArchimatePackage.eINSTANCE.getInfrastructureService());
         getElements(technologyFolder, list, IArchimatePackage.eINSTANCE.getSystemSoftware());
-        writeElements(list, Messages.HTMLReportExporter_9, color);
+        //writeElements(list, Messages.HTMLReportExporter_9, color);
     }
     
-    private void writeMotivationElements() throws IOException {
+    private void getMotivationElements(List<EObject> list) throws IOException {
         IFolder motivationFolder = fModel.getFolder(FolderType.MOTIVATION);
-        String color = ColorFactory.convertRGBToString(new RGB(220, 235, 235));
+        //String color = ColorFactory.convertRGBToString(new RGB(220, 235, 235));
         
-        List<EObject> list = new ArrayList<EObject>();
+        //List<EObject> list = new ArrayList<EObject>();
         getElements(motivationFolder, list, IArchimatePackage.eINSTANCE.getStakeholder());
         getElements(motivationFolder, list, IArchimatePackage.eINSTANCE.getDriver());
         getElements(motivationFolder, list, IArchimatePackage.eINSTANCE.getAssessment());
@@ -225,28 +265,28 @@ public class HTMLReportExporter {
         getElements(motivationFolder, list, IArchimatePackage.eINSTANCE.getPrinciple());
         getElements(motivationFolder, list, IArchimatePackage.eINSTANCE.getRequirement());
         getElements(motivationFolder, list, IArchimatePackage.eINSTANCE.getConstraint());
-        writeElements(list, Messages.HTMLReportExporter_10, color);
+        //writeElements(list, Messages.HTMLReportExporter_10, color);
     }
     
-    private void writeImplementationMigrationElements() throws IOException {
+    private void getImplementationMigrationElements(List<EObject> list) throws IOException {
         IFolder implmigrationFolder = fModel.getFolder(FolderType.IMPLEMENTATION_MIGRATION);
-        String color = ColorFactory.convertRGBToString(new RGB(220, 235, 235));
+        //String color = ColorFactory.convertRGBToString(new RGB(220, 235, 235));
         
-        List<EObject> list = new ArrayList<EObject>();
+        //List<EObject> list = new ArrayList<EObject>();
         getElements(implmigrationFolder, list, IArchimatePackage.eINSTANCE.getWorkPackage());
         getElements(implmigrationFolder, list, IArchimatePackage.eINSTANCE.getDeliverable());
         getElements(implmigrationFolder, list, IArchimatePackage.eINSTANCE.getPlateau());
         getElements(implmigrationFolder, list, IArchimatePackage.eINSTANCE.getGap());
-        writeElements(list, Messages.HTMLReportExporter_11, color);
+        //writeElements(list, Messages.HTMLReportExporter_11, color);
     }
     
-    private void writeConnectorElements() throws IOException {
+    private void getConnectorElements(List<EObject> list) throws IOException {
         IFolder connectionsFolder = fModel.getFolder(FolderType.CONNECTORS);
-        String color = ColorFactory.convertRGBToString(new RGB(220, 235, 235));
+        //String color = ColorFactory.convertRGBToString(new RGB(220, 235, 235));
         
-        List<EObject> list = new ArrayList<EObject>();
+        //List<EObject> list = new ArrayList<EObject>();
         getElements(connectionsFolder, list, null);
-        writeElements(list, Messages.HTMLReportExporter_12, color);
+        //writeElements(list, Messages.HTMLReportExporter_12, color);
     }
     
     private void getElements(IFolder folder, List<EObject> list, EClass type) {
@@ -264,7 +304,7 @@ public class HTMLReportExporter {
         }
     }
     
-    private void writeElements(List<EObject> list, String title, String color) throws IOException {
+    /* private void writeElements(List<EObject> list, String title, String color) throws IOException {
         if(!list.isEmpty()) {
             writer.write("<h2>" + title + "</h2>\n"); //$NON-NLS-1$ //$NON-NLS-2$
             
@@ -281,79 +321,27 @@ public class HTMLReportExporter {
             
             writer.write("<br/>"); //$NON-NLS-1$
         }
-    }
+    } */
     
-    private void writeModelSummary(IArchimateModel model) throws IOException {
-    	writer.write("<table width=\"100%\" border=\"0\">\n"); //$NON-NLS-1$
-    	
-    	writer.write("<tr bgcolor=\"" + "#F0F0F0" + "\">\n"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-    	String name = fModel.getName();
-        if(!StringUtils.isSet(name)) {
-        	name = Messages.HTMLReportExporter_13;
+    private void writeElements(List<EObject> list) throws IOException {
+        if(!list.isEmpty()) {
+            for(EObject object : list) {
+                if(object instanceof IArchimateComponent) {
+                	writeElement(object, element, new File(fElementsFolder, ((ArchimateComponent) object).getId()+".html")); //$NON-NLS-1$
+                }
+            }
         }
-        else {
-        	name = parseChars(name);
-        }
-        writer.write("<td width=\"20%\" valign=\"top\">" + Messages.HTMLReportExporter_14 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("<td width=\"80%\" valign=\"top\">" + name + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("</tr>\n"); //$NON-NLS-1$
-        
-        writer.write("<tr>\n"); //$NON-NLS-1$
-        String date = DateFormat.getDateTimeInstance().format(new Date());
-        writer.write("<td valign=\"top\">" + Messages.HTMLReportExporter_15 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("<td valign=\"top\">" + date + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("</tr>\n"); //$NON-NLS-1$
-        
-        writer.write("<tr>\n"); //$NON-NLS-1$
-        String doc = StringUtils.safeString(model.getPurpose());
-        doc = parseCharsAndLinks(doc);
-        writer.write("<td valign=\"top\">" + Messages.HTMLReportExporter_16 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("<td valign=\"top\">" + doc + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("</tr>\n"); //$NON-NLS-1$
-        
-        writeProperties(model);
-        
-        writer.write("</table>\n"); //$NON-NLS-1$
-
     }
     
-    private void writeTableElement(IArchimateComponent component, String color) throws IOException {
-    	writer.write("<table width=\"100%\" border=\"0\">\n"); //$NON-NLS-1$
-    	
-    	writer.write("<tr bgcolor=\"" + color + "\">\n"); //$NON-NLS-1$  //$NON-NLS-2$
-        String name = StringUtils.safeString(component.getName());
-        name = parseChars(name);
-        writer.write("<td width=\"20%\" valign=\"top\">" + Messages.HTMLReportExporter_17 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("<td width=\"80%\" valign=\"top\">" + name + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("</tr>\n"); //$NON-NLS-1$
-        
-        writer.write("<tr>\n"); //$NON-NLS-1$
-        String type = ArchimateLabelProvider.INSTANCE.getDefaultName(component.eClass());
-        writer.write("<td valign=\"top\">" + Messages.HTMLReportExporter_18 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("<td valign=\"top\">" + type + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("</tr>\n"); //$NON-NLS-1$
-        
-        writer.write("<tr>\n"); //$NON-NLS-1$
-        String doc = StringUtils.safeString(component.getDocumentation());
-        doc = parseCharsAndLinks(doc);
-        writer.write("<td valign=\"top\">" + Messages.HTMLReportExporter_19 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("<td valign=\"top\">" + doc + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        writer.write("</tr>\n"); //$NON-NLS-1$
-        
-        writeProperties(component);
-        
-        writer.write("</table>\n"); //$NON-NLS-1$
-    }
-    
-    private void writeProperties(IProperties element) throws IOException {
-    	for(IProperty property : element.getProperties()) {
-        	writer.write("<tr>\n"); //$NON-NLS-1$
-        	String key = parseChars(property.getKey());
-        	writer.write("<td valign=\"top\">" + key + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        	String value = parseCharsAndLinks(property.getValue());
-        	writer.write("<td valign=\"top\">" + value + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-        	writer.write("</tr>\n"); //$NON-NLS-1$
-		}
+    private void writeElement(EObject component, ST template, File elementF) throws IOException {
+        //File elementF = new File(fElementsFolder, ((ArchimateComponent) object).getId()+".html"); //$NON-NLS-1$
+        OutputStreamWriter elementW = new OutputStreamWriter(new FileOutputStream(elementF), "UTF16"); //$NON-NLS-1$
+        template.remove("element");
+        template.remove("properties");
+        template.add("element", component);
+        template.add("properties", ((IProperties) component).getProperties());
+        elementW.write(template.render()); //$NON-NLS-1$
+        elementW.close();
     }
     
     private void writeDiagrams() throws IOException {
@@ -367,32 +355,46 @@ public class HTMLReportExporter {
 
         Hashtable<IDiagramModel, String> table = saveDiagrams(copy);
 
-        writer.write("<br/><br/><br/>\n"); //$NON-NLS-1$
-        writer.write("<h2>" + Messages.HTMLReportExporter_20 + "</h2>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-
         for(IDiagramModel dm : copy) {
-            writer.write("<table width=\"100%\" border=\"0\">\n"); //$NON-NLS-1$
-
-            writer.write("<tr bgcolor=\"" + "#e0e4e6" + "\">\n");  //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            String name = StringUtils.safeString(dm.getName());
-            name = parseChars(name);
-            writer.write("<td width=\"20%\" valign=\"top\">" + Messages.HTMLReportExporter_21 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-            writer.write("<td width=\"80%\" valign=\"top\">" + name + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-            writer.write("</tr>\n"); //$NON-NLS-1$
-
-            writer.write("<tr>\n"); //$NON-NLS-1$
-            String doc = StringUtils.safeString(dm.getDocumentation());
-            doc = parseCharsAndLinks(doc);
-            writer.write("<td valign=\"top\">" + Messages.HTMLReportExporter_22 + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-            writer.write("<td valign=\"top\">" + doc + "</td>\n"); //$NON-NLS-1$ //$NON-NLS-2$
-            writer.write("</tr>\n"); //$NON-NLS-1$
-
-            writeProperties(dm);
-
-            writer.write("</table>\n"); //$NON-NLS-1$
-
-            writer.write("<img src=\"" + table.get(dm) + "\"" + "/>\n"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            writer.write("<br/><br/><br/><br/>\n"); //$NON-NLS-1$
+        	//Name
+            //String name = StringUtils.safeString(dm.getName());
+            //name = parseChars(name);
+            //Doc
+            //String doc = StringUtils.safeString(dm.getDocumentation());
+            //doc = parseCharsAndLinks(doc);
+            // Image
+            //writer.write("<img src=\"" + table.get(dm) + "\"" + "/>\n"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            
+            File viewF = new File(fViewsFolder, dm.getId()+".html");
+            OutputStreamWriter viewW = new OutputStreamWriter(new FileOutputStream(viewF), "UTF16"); //$NON-NLS-1$
+            view.remove("view");
+            view.remove("diagram");
+            view.remove("properties");
+            view.remove("children");
+            view.add("view", dm);
+            view.add("diagram", table.get(dm));
+            view.add("properties", dm.getProperties());
+            List<IArchimateElement> fChildren = new ArrayList<IArchimateElement>();
+            getAllChildObjects(dm, fChildren);
+            sort(fChildren);
+            view.add("children", fChildren);
+            viewW.write(view.render()); //$NON-NLS-1$
+            viewW.close();
+        }
+    }
+    
+    private void getAllChildObjects(IDiagramModelContainer container, List<IArchimateElement> fChildren) {
+        for(IDiagramModelObject child : container.getChildren()) {
+            if(child instanceof IDiagramModelArchimateObject) {
+                IArchimateElement element = ((IDiagramModelArchimateObject)child).getArchimateElement();
+                if(element != null && !fChildren.contains(element)) {
+                    fChildren.add(element);
+                }
+            }
+            
+            if(child instanceof IDiagramModelContainer) {
+                getAllChildObjects((IDiagramModelContainer)child, fChildren);
+            }
         }
     }
     
@@ -421,7 +423,7 @@ public class HTMLReportExporter {
             try {
                 ImageLoader loader = new ImageLoader();
                 loader.data = new ImageData[] { image.getImageData() };
-                File file = new File(fMainFolder, diagramName);
+                File file = new File(fImagesFolder, diagramName);
                 loader.save(file.getAbsolutePath(), SWT.IMAGE_PNG);
             }
             finally {
