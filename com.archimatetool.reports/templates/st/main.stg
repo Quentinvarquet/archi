@@ -1,0 +1,6 @@
+delimiters "^", "^"
+
+import "modeltree.stg"
+import "model.st"
+import "element.st"
+import "view.st"

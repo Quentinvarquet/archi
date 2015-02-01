@@ -61,6 +61,7 @@ import com.archimatetool.model.impl.ArchimateComponent;
 import org.stringtemplate.v4.*;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 
+import org.eclipse.draw2d.RelativeBendpoint;
 
 /**
  * Export model to HTML report
@@ -79,7 +80,7 @@ public class HTMLReportExporter extends AbstractUIPlugin {
     OutputStreamWriter writer;
     
     // Templates
-    STRawGroupDir groupe;
+    STGroupFile groupe;
     ST element, view, modeltree, model;
     
     public void export(IArchimateModel model) throws IOException {
@@ -105,7 +106,9 @@ public class HTMLReportExporter extends AbstractUIPlugin {
     
     private File createMainHTMLPage() throws IOException {
     	// Instantiate templates files
-    	groupe = new STRawGroupDir(getTemplatesFolder().getAbsolutePath()+File.separator+"st", '^', '^');
+    	//groupe = new STRawGroupDir(getTemplatesFolder().getAbsolutePath()+File.separator+"st", '^', '^');
+//    	groupe = new STGroupDir(getTemplatesFolder().getAbsolutePath()+File.separator+"st", '^', '^');
+    	groupe = new STGroupFile(getTemplatesFolder().getAbsolutePath()+File.separator+"st"+File.separator+"main.stg", '^', '^');
         element = groupe.getInstanceOf("element");
         view = groupe.getInstanceOf("view");
         modeltree = groupe.getInstanceOf("modeltree");
@@ -168,9 +171,10 @@ public class HTMLReportExporter extends AbstractUIPlugin {
         modeltree.add("implementationMigrationList", implementationMigrationList);
         modeltree.add("connectorList", connectorList);
         modeltree.add("viewList", viewList);
+        modeltree.add("rootFolder", fModel.getFolder(FolderType.DIAGRAMS));
         modeltreeW.write(modeltree.render()); //$NON-NLS-1$
         modeltreeW.close();
-       
+        
         return new File(fMainFolder, "index.html");
     }
     

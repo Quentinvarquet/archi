@@ -1,3 +1,13 @@
+doFolder(folder) ::= <<
+<ul>
+^folder.Folders:{f | <li><span><i class="glyphicon glyphicon-plus-sign"></i> ^f.Name^ </span>
+^doFolder(f)^
+</li>}^
+^folder.Elements:{e | <li><a href="../views/^e.Id^.html" target="view"> ^e.Name^ </a></li>}^
+</ul>
+>>
+
+modeltree(businessList, applicationList, technologyList, motivationList, implementationMigrationList, connectorList, viewList, rootFolder) ::= <<
 <html>
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
@@ -79,13 +89,11 @@ $(function () {
         </li>
         <li>
             <span><i class="glyphicon glyphicon-plus-sign"></i> Views</span>
-            <ul>
-^viewList:{view | <li><a href="../views/^view.Id^.html" target="view"> ^view.Name^ </a></li>
-}^
-		    </ul>
+			^doFolder(rootFolder)^
         </li>
     </ul>
 </div>
 </div>
 </body>
 </html>
+>>

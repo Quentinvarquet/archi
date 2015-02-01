@@ -1,4 +1,7 @@
+element(element, properties) ::= <<
+<!DOCTYPE html>
 <html>
+<meta charset="UTF-8">
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
@@ -36,7 +39,7 @@ $(function () {
 <body class="bs-example">
 	<div class="panel panel-default">
 		<div class="panel-heading">
-			<b>^element.Name^</b> (TODO)
+			<b>^element.Name^</b> (^element.Class.SimpleName^)
 			<a href="javascript:window.open('../hints/TODO.html', 'Hint', 'location=no,menubar=no,status=no,toolbar=no,scrollbars=yes')"><i class="glyphicon glyphicon-info-sign"></i></a>
 		</div>
 		<div class="panel-body">
@@ -73,3 +76,4 @@ $(function () {
 	</div>
 </body>
 </html>
+>>
